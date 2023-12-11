@@ -1,297 +1,201 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <meta name="description"
-          content="Run Pareto Anywhere in a web browser that supports the experimental Web Bluetooth Scanning feature to experience proximity-based contextual content and search.">
-    <link rel="stylesheet" href="style/bootstrap.min.css">
-    <link rel="stylesheet" href="style/reelyactive.css">
-    <title> Pareto Anywhere Web App by reelyActive </title>
-    <!----- Structured, linked metadata (JSON-LD & Schema.org) ----->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org", 
-      "@type": "WebApplication",
-      "name": "Pareto Anywhere Web App by reelyActive",
-      "description": "Run Pareto Anywhere in a web browser that supports the experimental Web Bluetooth Scanning feature to experience proximity-based contextual content and search.",
-      "license": "https://opensource.org/licenses/MIT",
-      "isAccessibleForFree": true,
-      "applicationCategory": "Client-side",
-      "browserRequirements": "Requires a browser that supports Web Bluetooth and the experimental scanning feature.",
-      "image": "https://reelyactive.github.io/pareto-anywhere/images/header.jpg",
-      "author": {
-        "@type": "Organization",
-        "url": "https://www.reelyactive.com"
-      }
+<!--
+  Rui Santos
+  Complete project details at https://RandomNerdTutorials.com/esp32-web-bluetooth/
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files.
+  The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ESP32 Web BLE App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/png" href="">
+</head>
+<body>
+  <h1>ESP32 Web BLE Application</h1>
+  <button id="connectBleButton">Connect to BLE Device</button>
+  <button id="disconnectBleButton">Disconnect BLE Device</button>
+  <p>BLE state: <strong><span id="bleState" style="color:#d13a30;">Disconnected</span></strong></p>
+  <h2>Fetched Value</h2>
+  <p><span id="valueContainer">NaN</span></p>
+  <p>Last reading: <span id="timestamp"></span></p>
+  <h2>Control GPIO 2</h2>
+  <button id="onButton">ON</button>
+  <button id="offButton">OFF</button>
+  <p>Last value sent: <span id="valueSent"></span></p>
+  <p><a href="https://randomnerdtutorials.com/">Created by RandomNerdTutorials.com</a></p>
+  <p><a href="https://RandomNerdTutorials.com/esp32-web-bluetooth/">Read the full project here.</a></p>
+</body>
+<script>
+    // DOM Elements
+    const connectButton = document.getElementById('connectBleButton');
+    const disconnectButton = document.getElementById('disconnectBleButton');
+    const onButton = document.getElementById('onButton');
+    const offButton = document.getElementById('offButton');
+    const retrievedValue = document.getElementById('valueContainer');
+    const latestValueSent = document.getElementById('valueSent');
+    const bleStateContainer = document.getElementById('bleState');
+    const timestampContainer = document.getElementById('timestamp');
+
+    //Define BLE Device Specs
+    var deviceName ='ESP32';
+    var bleService = '19b10000-e8f2-537e-4f6c-d104768a1214';
+    var ledCharacteristic = '19b10002-e8f2-537e-4f6c-d104768a1214';
+    var sensorCharacteristic= '19b10001-e8f2-537e-4f6c-d104768a1214';
+
+    //Global Variables to Handle Bluetooth
+    var bleServer;
+    var bleServiceFound;
+    var sensorCharacteristicFound;
+
+    // Connect Button (search for BLE Devices only if BLE is available)
+    connectButton.addEventListener('click', (event) => {
+        if (isWebBluetoothEnabled()){
+            connectToDevice();
+        }
+    });
+
+    // Disconnect Button
+    disconnectButton.addEventListener('click', disconnectDevice);
+
+    // Write to the ESP32 LED Characteristic
+    onButton.addEventListener('click', () => writeOnCharacteristic(1));
+    offButton.addEventListener('click', () => writeOnCharacteristic(0));
+
+    // Check if BLE is available in your Browser
+    function isWebBluetoothEnabled() {
+        if (!navigator.bluetooth) {
+            console.log("Web Bluetooth API is not available in this browser!");
+            bleStateContainer.innerHTML = "Web Bluetooth API is not available in this browser!";
+            return false
+        }
+        console.log('Web Bluetooth API supported in this browser.');
+        return true
     }
-    </script>
-  </head>
-  <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-reelyactive bg-reelyactive">
-      <a class="navbar-brand" href="https://www.reelyactive.com/">
-        <img src="images/reelyactive-logo-nav.png" width="165" height="30"
-             alt="reelyActive">
-      </a>
-      <button class="navbar-toggler" type="button" data-toggle="collapse"
-              data-target="#navbarItems" aria-controls="navbarItems"
-              aria-expanded="false" aria-label="Toggle navigation">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarItems">
-        <!-- Left-aligned navigation items -->
-        <ul class="navbar-nav mr-auto"></ul>
-        <!-- Right-aligned navigation items -->
-        <ul class="navbar-nav">
-          <li class="nav-item">
-            <!-- Link to home -->
-            <a class="nav-link"
-               href="https://reelyactive.github.io/pareto-anywhere/">
-              <i class="fas fa-home"></i>
-            </a>
-          </li>
-          <li class="nav-item">
-            <!-- Link to configure -->
-            <a class="nav-link"
-               href="enable-web-bluetooth-scanning/">
-              <i class="fas fa-cog"></i>
-            </a>
-          </li>
-          <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle" id="navbarDropdown"
-               role="button" data-toggle="dropdown" aria-haspopup="true"
-               aria-expanded="false">
-              <i class="fas fa-question-circle"></i>
-            </a>
-            <!-- Info about tracking and open source software/licenses -->
-            <div class="dropdown-menu dropdown-menu-right"
-                 aria-labelledby="navbarDropdown">
-              <a class="dropdown-item"
-                 href="https://www.reelyactive.com/how-we-observe/#digital">
-                <i class="fas fa-mouse-pointer"></i>
-                Behaviour tracking free &nbsp;
-                <span class="badge badge-success">
-                  <i class="fas fa-user-shield"></i>
-                </span>
-              </a>
-              <div class="dropdown-divider"></div>
-              <a class="dropdown-item" target="_blank"
-                 href="https://getbootstrap.com" >
-                <i class="fab fa-bootstrap"></i>
-                Bootstrap 4 &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-osi"></i> MIT
-                </span>
-              </a>
-              <a class="dropdown-item" target="_blank"
-                 href="https://fontawesome.com" >
-                <i class="fab fa-font-awesome"></i>
-                Font Awesome (Free) &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-creative-commons"></i>
-                  <i class="fab fa-osi"></i> MIT
-                </span>
-              </a>
-              <a class="dropdown-item" target="_blank"
-                 href="https://jquery.com" >
-                <i class="fab fa-js"></i>
-                JQuery &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-osi"></i> MIT
-                </span>
-              </a>
-              <a class="dropdown-item" target="_blank"
-                 href="https://github.com/reelyactive/web-style-guide/" >
-                <i class="fas fa-code"></i>
-                Web Style Guide &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-osi"></i> MIT
-                </span>
-              </a>
-              <div class="dropdown-divider"></div>
-              <a class="dropdown-item" target="_blank"
-                 href="https://github.com/reelyactive/beaver/" >
-                <i class="fab fa-js"></i>
-                beaver.js &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-osi"></i> MIT
-                </span>
-              </a>
-              <a class="dropdown-item" target="_blank"
-                 href="https://github.com/reelyactive/cormorant/" >
-                <i class="fab fa-js"></i>
-                cormorant.js &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-osi"></i> MIT
-                </span>
-              </a>
-              <a class="dropdown-item" target="_blank"
-                 href="https://github.com/reelyactive/cuttlefish/" >
-                <i class="fab fa-js"></i>
-                cuttlefish.js &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-osi"></i> MIT
-                </span>
-              </a>
-              <a class="dropdown-item" target="_blank"
-                 href="https://sniffypedia.org" >
-                <i class="fas fa-database"></i>
-                Sniffypedia.org &nbsp;
-                <span class="badge badge-light">
-                  <i class="fab fa-creative-commons"></i> ODbL
-                </span>
-              </a>
-              <div class="dropdown-divider"></div>
-              <a class="dropdown-item" target="_blank"
-                 href="https://www.reelyactive.com/made-in-montreal/" >
-                <i class="fab fa-canadian-maple-leaf"></i>
-                Made in Montr&eacute;al &nbsp;
-                <i class="fas fa-city"></i>
-              </a>
-            </div>
-          </li>
-        </ul>
-      </div>
-    </nav>
-    <!-- Content -->
-    <div class="container-fluid">
-      <div class="row justify-content-center">
-        <div class="col-sm-10 col-md-8 col-lg-6 col-xl-4">
-          <img src="images/pareto-anywhere-logo.png"
-               class="img-fluid mx-auto d-block my-4">
-          <p class="text-center">
-            <span class="lead"> Scan to discover nearby contextual content </span>
-            <br>
-            <span class="small text-muted"> with the <em>experimental</em> Web Bluetooth Scanning feature </span>
-          </p>
-          <p class="text-center my-4">
-            <button type="button" class="btn btn-primary"
-                    id="scanButton"> Scan </button>
-            <button type="button" class="btn btn-outline-dark"
-                    id="stopButton" disabled> Stop </button>
-            <button type="button" class="btn btn-outline-dark"
-                    data-toggle="collapse" data-target="#collapseSettings"
-                    aria-expanded="false" aria-controls="collapseSettings"
-                    id="settingsButton">
-              <i class="fas fa-sliders-h"></i>
-            </button>
-          </p>
-          <div id="collapseSettings" class="collapse mb-4">
-            <div class="card">
-              <div class="card-body">
-                <form>
-                  <div class="form-check form-check-inline mb-2">
-                    <input class="form-check-input" type="checkbox"
-                           id="digitalTwinsInput">
-                    <label class="form-check-label" for="digitalTwinsInput">
-                      Display <em>only</em> digital twins
-                    </label>
-                  </div>
-                  <div class="form-group">
-                    <label for="nearestLimitInput">
-                      <i class="fas fa-list-ol"></i> Display nearest &nbsp;
-                      <b id="nearestLimitDisplay">3</b>
-                    </label>
-                    <input type="range" class="custom-range" min="1" max="12"
-                           id="nearestLimitInput">
-                  </div>
-                  <div class="form-group">
-                    <label for="rssiThresholdInput">
-                      <i class="fas fa-signal"></i> RSSI threshold &nbsp;
-                      <b id="rssiThresholdDisplay">-72 dBm</b>
-                    </label>
-                    <input type="range" class="custom-range"
-                           min="-100" max="-40" id="rssiThresholdInput">
-                  </div>
-                </form>
-              </div>
-              <div class="card-footer text-center">
-                <span class="small text-muted">
-                  <i class="fas fa-angle-left"></i>
-                  &nbsp; -100 dBm is farthest &nbsp; |
-                  &nbsp; -40dBm is nearest &nbsp;
-                  <i class="fas fa-angle-right"></i>
-                </span>
-              </div>
-            </div>
-          </div>
-          <div id="scanStats" class="row mb-4" hidden>
-            <div class="col-sm-6">
-              <div class="card">
-                <div class="card-header text-truncate text-white bg-dark">
-                  <i class="fas fa-tachometer-alt"></i> &nbsp; raddecs/s
-                </div>
-                <div class="card-body text-center text-truncate display-4">
-                  <span id="raddecRate">0</span>
-                </div>
-              </div>
-            </div>
-            <div class="col-sm-6">
-              <div class="card">
-                <div class="card-header text-truncate text-white bg-dark">
-                  <i class="fas fa-wifi"></i> &nbsp; transmitters
-                </div>
-                <div class="card-body text-center text-truncate display-4">
-                  <span id="numTransmitters">0</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="row justify-content-center">
-        <div class="col-sm-12 col-md-10 col-lg-8 col-xl-6">
-          <div id="scanError" class="card my-4" hidden>
-            <div class="card-header"> <i class="fas fa-exclamation-triangle"></i> &nbsp; Browser may not be supported or configured </div>
-            <div class="card-body">
-              <h5 class="card-title"> Web Bluetooth Scanning is an <em>experimental</em> feature </h5>
-              <p class="card-text"> This web app version of <a href="https://getpareto.com" target="_blank">Pareto Anywhere</a> takes advantage of an <b>experimental</b> feature called Web Bluetooth Scanning which has <em>limited browser support</em> and typically <em>requires explicit configuration</em>. </p>
-              <p class="card-text"> If you're seeing this message<em>&mdash;which is to be expected for first-time users&mdash;</em>follow the tutorial below, then try to scan again, if your browser supports this feature. </p>
-              <p class="card-text text-center">
-                <a href="enable-web-bluetooth-scanning/"
-                   class="btn btn-secondary">
-                  <i class="fas fa-cog"></i> &nbsp;
-                  Enable Web Bluetooth Scanning
-                </a>
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="row justify-content-center">
-        <div class="col-sm-12 col-md-10 col-lg-8 col-xl-6">
-          <div class="card text-white bg-reelyactive"
-               id="nearestTitle" hidden>
-            <h5 id="nearestCount" class="card-header"> Nearest </h5>
-          </div>
-          <div id="proximityCards" class="card-deck"></div>
-        </div>
-      </div>
-      <div class="row justify-content-center">
-        <div class="col-sm-12 col-md-10 col-lg-8 col-xl-6">
-          <pre id="debugMessage"></pre>
-        </div>
-      </div>
-    </div>
-    <footer class="footer">
-      <a href="https://github.com/reelyactive/pareto-anywhere"> pareto-anywhere </a>
-      &nbsp; | &nbsp;
-      <a href="https://www.reelyactive.com"> &copy; reelyActive 2020-2021 </a>
-    </footer>
-    <script defer src="js/solid.min.js"></script>
-    <script defer src="js/brands.min.js"></script>
-    <script defer src="js/fontawesome.min.js"></script>
-    <script src="js/jquery-3.4.0.min.js"></script>
-    <script src="js/bootstrap.bundle.min.js"></script>
-    <script src="js/beaver.js"></script>
-    <script src="js/cormorant.js"></script>
-    <script src="js/cuttlefish.js"></script>
-    <script src="js/sniffypedia.js"></script>
-    <script src="js/eddystone.js"></script>
-    <script src="js/minew.js"></script>
-    <script src="js/config.js"></script>
-    <script src="js/pareto-anywhere.js"></script>
-  </body>
+
+    // Connect to BLE Device and Enable Notifications
+    function connectToDevice(){
+        console.log('Initializing Bluetooth...');
+        navigator.bluetooth.requestDevice({
+            filters: [{name: deviceName}],
+            optionalServices: [bleService]
+        })
+        .then(device => {
+            console.log('Device Selected:', device.name);
+            bleStateContainer.innerHTML = 'Connected to device ' + device.name;
+            bleStateContainer.style.color = "#24af37";
+            device.addEventListener('gattservicedisconnected', onDisconnected);
+            return device.gatt.connect();
+        })
+        .then(gattServer =>{
+            bleServer = gattServer;
+            console.log("Connected to GATT Server");
+            return bleServer.getPrimaryService(bleService);
+        })
+        .then(service => {
+            bleServiceFound = service;
+            console.log("Service discovered:", service.uuid);
+            return service.getCharacteristic(sensorCharacteristic);
+        })
+        .then(characteristic => {
+            console.log("Characteristic discovered:", characteristic.uuid);
+            sensorCharacteristicFound = characteristic;
+            characteristic.addEventListener('characteristicvaluechanged', handleCharacteristicChange);
+            characteristic.startNotifications();
+            console.log("Notifications Started.");
+            return characteristic.readValue();
+        })
+        .then(value => {
+            console.log("Read value: ", value);
+            const decodedValue = new TextDecoder().decode(value);
+            console.log("Decoded value: ", decodedValue);
+            retrievedValue.innerHTML = decodedValue;
+        })
+        .catch(error => {
+            console.log('Error: ', error);
+        })
+    }
+
+    function onDisconnected(event){
+        console.log('Device Disconnected:', event.target.device.name);
+        bleStateContainer.innerHTML = "Device disconnected";
+        bleStateContainer.style.color = "#d13a30";
+
+        connectToDevice();
+    }
+
+    function handleCharacteristicChange(event){
+        const newValueReceived = new TextDecoder().decode(event.target.value);
+        console.log("Characteristic value changed: ", newValueReceived);
+        retrievedValue.innerHTML = newValueReceived;
+        timestampContainer.innerHTML = getDateTime();
+    }
+
+    function writeOnCharacteristic(value){
+        if (bleServer && bleServer.connected) {
+            bleServiceFound.getCharacteristic(ledCharacteristic)
+            .then(characteristic => {
+                console.log("Found the LED characteristic: ", characteristic.uuid);
+                const data = new Uint8Array([value]);
+                return characteristic.writeValue(data);
+            })
+            .then(() => {
+                latestValueSent.innerHTML = value;
+                console.log("Value written to LEDcharacteristic:", value);
+            })
+            .catch(error => {
+                console.error("Error writing to the LED characteristic: ", error);
+            });
+        } else {
+            console.error ("Bluetooth is not connected. Cannot write to characteristic.")
+            window.alert("Bluetooth is not connected. Cannot write to characteristic. \n Connect to BLE first!")
+        }
+    }
+
+    function disconnectDevice() {
+        console.log("Disconnect Device.");
+        if (bleServer && bleServer.connected) {
+            if (sensorCharacteristicFound) {
+                sensorCharacteristicFound.stopNotifications()
+                    .then(() => {
+                        console.log("Notifications Stopped");
+                        return bleServer.disconnect();
+                    })
+                    .then(() => {
+                        console.log("Device Disconnected");
+                        bleStateContainer.innerHTML = "Device Disconnected";
+                        bleStateContainer.style.color = "#d13a30";
+
+                    })
+                    .catch(error => {
+                        console.log("An error occurred:", error);
+                    });
+            } else {
+                console.log("No characteristic found to disconnect.");
+            }
+        } else {
+            // Throw an error if Bluetooth is not connected
+            console.error("Bluetooth is not connected.");
+            window.alert("Bluetooth is not connected.")
+        }
+    }
+
+    function getDateTime() {
+        var currentdate = new Date();
+        var day = ("00" + currentdate.getDate()).slice(-2); // Convert day to string and slice
+        var month = ("00" + (currentdate.getMonth() + 1)).slice(-2);
+        var year = currentdate.getFullYear();
+        var hours = ("00" + currentdate.getHours()).slice(-2);
+        var minutes = ("00" + currentdate.getMinutes()).slice(-2);
+        var seconds = ("00" + currentdate.getSeconds()).slice(-2);
+
+        var datetime = day + "/" + month + "/" + year + " at " + hours + ":" + minutes + ":" + seconds;
+        return datetime;
+    }
+
+
+</script>
+
 </html>
